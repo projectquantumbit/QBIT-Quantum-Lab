@@ -1,0 +1,16 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {makeExperiment,simulate,probabilities,newCircuit,sampleShots,measureQubit,blochVector,fromJSON,toQASM,validateCircuit} from '../src/quantum.mjs';
+const near=(a,b,eps=1e-9)=>assert.ok(Math.abs(a-b)<eps,`${a} !== ${b}`);
+const circ=(n,...gs)=>({ ...newCircuit(n),gates:gs.map((g,step)=>({...g,step}))});
+test('|0⟩ starts in ground state',()=>{const p=probabilities(simulate(newCircuit(1)));near(p[0],1);near(p[1],0);});
+test('X maps |0⟩ to |1⟩',()=>{const p=probabilities(simulate(circ(1,{type:'X',target:0})));near(p[1],1);});
+test('H creates equal probabilities',()=>{const p=probabilities(simulate(makeExperiment('superposition')));near(p[0],.5);near(p[1],.5);});
+test('H² and X² are identities',()=>{for(const type of ['H','X'])near(probabilities(simulate(circ(1,{type,target:0},{type,target:0})))[0],1);});
+test('Bell state correlations and mixed local state',()=>{const s=simulate(makeExperiment('entanglement')),p=probabilities(s);near(p[0],.5);near(p[3],.5);near(p[1]+p[2],0);near(blochVector(s,0).purity,0);});
+test('Every featured experiment is normalized',()=>{for(const id of ['superposition','entanglement','interference','teleportation','grover','qft'])near(probabilities(simulate(makeExperiment(id))).reduce((a,b)=>a+b,0),1);});
+test('Grover amplifies marked state |11⟩',()=>{const p=probabilities(simulate(makeExperiment('grover')));near(p[3],1);});
+test('Interference yields |1⟩',()=>near(probabilities(simulate(makeExperiment('interference')))[1],1));
+test('Measurement collapses correctly',()=>{const m=measureQubit(simulate(makeExperiment('superposition')),0,()=>0.2);near(probabilities(m.state)[0],1);near(m.p0,.5);});
+test('Deterministic shots obey correct distribution',()=>{let i=0;const counts=sampleShots(simulate(makeExperiment('superposition')),1000,()=>((i++%1000)+.5)/1000);assert.deepEqual(counts,[500,500]);});
+test('JSON round-trip and QASM export',()=>{const c=makeExperiment('entanglement');assert.deepEqual(fromJSON(JSON.stringify(c)).gates,c.gates);assert.match(toQASM(c),/cx q\[0\],q\[1\];/);});
+test('Bad circuit cannot silently simulate',()=>assert.throws(()=>validateCircuit(circ(1,{type:'CX',control:0,target:0})),/control/));
